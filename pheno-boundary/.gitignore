@@ -1,0 +1,81 @@
+# Pheno-Boundary .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-specific data (large files)
+data/raw/
+data/processed/
+*.zarr/
+*.nc
+*.tif
+*.tiff
+*.npz
+*.npy
+
+# Model weights (large files)
+models/ftw/*.ckpt
+models/ftw/*.pt
+models/ftw/*.pth
+models/*.zip
+
+# Outputs (regeneratable)
+data/outputs/masks/
+data/outputs/*.png
+data/outputs/*.csv
+
+# Keep directory structure
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/outputs/.gitkeep
+!models/ftw/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Secrets
+.env
+*.key
+credentials.json

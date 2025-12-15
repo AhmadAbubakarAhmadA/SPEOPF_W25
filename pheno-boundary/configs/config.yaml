@@ -1,0 +1,166 @@
+# Pheno-Boundary Configuration
+# ==============================
+
+# Project metadata
+project:
+  name: "Pheno-Boundary"
+  version: "0.1.0"
+  description: "Dynamic Agricultural Parcel Delineation and Stability Analysis"
+
+# Area of Interest
+aoi:
+  name: "South Tyrol Alpine Valley"
+  description: "Agricultural region in Italian Alps with orchards, vineyards, meadows"
+  bbox:
+    west: 11.290770
+    south: 46.356466
+    east: 11.315060
+    north: 46.389037
+  crs: "EPSG:4326"
+  target_crs: "EPSG:32632"  # UTM zone 32N
+
+# Temporal configuration
+temporal:
+  start_date: "2019-12-31"
+  end_date: "2024-12-31"
+  years: [2020, 2021, 2022, 2023]
+  seasons:
+    spring: [3, 4, 5]      # March, April, May
+    summer: [6, 7, 8]      # June, July, August
+    autumn: [9, 10, 11]    # September, October, November
+    winter: [12, 1, 2]     # December, January, February
+
+# Data source configuration
+data:
+  stac_catalog: "https://stac.core.eopf.eodc.eu"
+  collection: "sentinel-2-l2a"
+  bands_10m: ["b02", "b03", "b04", "b08"]
+  bands_20m: ["scl"]
+  
+  # Band descriptions
+  band_info:
+    b02:
+      name: "Blue"
+      wavelength_nm: 490
+      resolution_m: 10
+    b03:
+      name: "Green"
+      wavelength_nm: 560
+      resolution_m: 10
+    b04:
+      name: "Red"
+      wavelength_nm: 665
+      resolution_m: 10
+    b08:
+      name: "NIR"
+      wavelength_nm: 842
+      resolution_m: 10
+    scl:
+      name: "Scene Classification Layer"
+      resolution_m: 20
+
+# Cloud masking
+cloud_mask:
+  # SCL values to mask (invalid pixels)
+  invalid_codes: [0, 1, 3, 7, 8, 9, 10]
+  # SCL code descriptions:
+  # 0: NO_DATA
+  # 1: SATURATED_DEFECTIVE
+  # 3: CLOUD_SHADOW
+  # 7: CLOUD_LOW_PROBABILITY
+  # 8: CLOUD_MEDIUM_PROBABILITY
+  # 9: CLOUD_HIGH_PROBABILITY
+  # 10: THIN_CIRRUS
+
+# Compositing
+compositing:
+  method: "median"  # Options: median, mean, max
+  min_valid_observations: 3  # Minimum cloud-free scenes per composite
+
+# FTW Model configuration
+model:
+  name: "prue_efnetb3_ccby_checkpoint"
+  source_url: "https://github.com/fieldsoftheworld/ftw-baselines/releases/download/v3.1/prue_efnetb3_ccby_checkpoint.ckpt"
+  local_path: "models/ftw/prue_efnetb3_ccby_checkpoint.ckpt"
+  release_version: "v3.1"
+  # Alternative older models (v1):
+  # - https://github.com/fieldsoftheworld/ftw-baselines/releases/download/v1/3_Class_FULL_FTW_Pretrained.ckpt
+  # - https://github.com/fieldsoftheworld/ftw-baselines/releases/download/v1/3_Class_CCBY_FTW_Pretrained.ckpt
+  # Hugging Face: https://huggingface.co/torchgeo/fields-of-the-world
+  
+  # Architecture
+  architecture:
+    encoder: "efficientnet-b3"
+    decoder: "unet"
+    in_channels: 8   # Bi-temporal: 4 bands × 2 timestamps
+    classes: 3       # 0: non-field, 1: field interior, 2: boundary
+  
+  # Inference settings
+  inference:
+    tile_size: 256
+    overlap: 32
+    batch_size: 1
+    device: "auto"   # auto, cuda, cpu
+  
+  # FTW input requirements
+  input_format:
+    channels:
+      - "B02_spring"   # Channel 0
+      - "B03_spring"   # Channel 1
+      - "B04_spring"   # Channel 2
+      - "B08_spring"   # Channel 3
+      - "B02_summer"   # Channel 4
+      - "B03_summer"   # Channel 5
+      - "B04_summer"   # Channel 6
+      - "B08_summer"   # Channel 7
+    normalization:
+      method: "divide"
+      max_value: 0.5   # Typical Sentinel-2 L2A reflectance range
+
+# Stability analysis
+stability:
+  # IoU thresholds
+  field_threshold: 0.5       # Probability threshold for field classification
+  stable_threshold: 0.8      # Fraction of years for "stable" classification
+  
+  # Change detection
+  change_threshold: 0.3      # Minimum probability difference for change
+
+# NDVI temporal statistics (supplementary)
+ndvi:
+  red_band: "b04"
+  nir_band: "b08"
+  growing_season_months: [4, 5, 6, 7, 8, 9]
+
+# Output configuration
+output:
+  masks_dir: "data/outputs/masks"
+  figures_dir: "data/outputs/figures"
+  metrics_dir: "data/outputs/metrics"
+  
+  # File naming
+  mask_pattern: "ftw_results_{year}.npz"
+  composite_pattern: "composite_{year}_{season}.nc"
+  
+  # Figure settings
+  figure_dpi: 300
+  figure_format: "png"
+
+# Compute environment
+compute:
+  # Local settings
+  local:
+    dask_workers: 4
+    dask_threads_per_worker: 2
+    memory_limit: "8GB"
+  
+  # Colab settings
+  colab:
+    gpu_enabled: true
+    mount_drive: true
+    drive_path: "/content/drive/MyDrive/pheno-boundary"
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
