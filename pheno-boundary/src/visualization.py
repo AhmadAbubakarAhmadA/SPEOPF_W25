@@ -531,12 +531,293 @@ def create_summary_figure(
         ax.set_title(str(year), fontsize=10)
         ax.axis('off')
     
-    fig.suptitle('Pheno-Boundary: Field Stability Analysis Summary', 
+    fig.suptitle('Pheno-Boundary: Field Stability Analysis Summary',
                  fontsize=16, fontweight='bold', y=0.98)
-    
+
     if output_path:
         os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         print(f"Saved: {output_path}")
-    
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Post-processing and ground truth comparison plots
+# ---------------------------------------------------------------------------
+
+def plot_raw_vs_filtered(
+    raw_mask: np.ndarray,
+    filtered_mask: np.ndarray,
+    year: int,
+    output_path: Optional[str] = None,
+    figsize: Tuple[int, int] = (12, 5),
+) -> plt.Figure:
+    """
+    Side-by-side comparison of raw field mask vs VITO-filtered mask.
+
+    Parameters
+    ----------
+    raw_mask : np.ndarray
+        Raw binary field mask from FTW inference.
+    filtered_mask : np.ndarray
+        Post-processed mask from VITO filter.
+    year : int
+        Year label.
+    output_path : str, optional
+        Path to save figure.
+    figsize : tuple
+        Figure size.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+
+    # Raw mask
+    axes[0].imshow(raw_mask, cmap='Greens', vmin=0, vmax=1)
+    axes[0].set_title(f'{year} Raw Mask', fontweight='bold')
+    raw_pct = 100 * raw_mask.astype(bool).sum() / raw_mask.size
+    axes[0].text(0.02, 0.98, f'{raw_pct:.1f}%', transform=axes[0].transAxes,
+                 fontsize=9, va='top',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    axes[0].axis('off')
+
+    # Filtered mask
+    axes[1].imshow(filtered_mask, cmap='Greens', vmin=0, vmax=1)
+    axes[1].set_title(f'{year} VITO Filtered', fontweight='bold')
+    filt_pct = 100 * filtered_mask.astype(bool).sum() / filtered_mask.size
+    axes[1].text(0.02, 0.98, f'{filt_pct:.1f}%', transform=axes[1].transAxes,
+                 fontsize=9, va='top',
+                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    axes[1].axis('off')
+
+    # Difference map
+    diff = np.zeros((*raw_mask.shape, 3), dtype=np.uint8)
+    raw_b = raw_mask.astype(bool)
+    filt_b = filtered_mask.astype(bool)
+    both = np.logical_and(raw_b, filt_b)
+    raw_only = np.logical_and(raw_b, ~filt_b)
+    filt_only = np.logical_and(~raw_b, filt_b)
+
+    diff[both] = [34, 139, 34]       # Green: in both
+    diff[raw_only] = [220, 20, 60]   # Red: raw only (removed by filter)
+    diff[filt_only] = [30, 144, 255] # Blue: filter only (added by filter)
+
+    axes[2].imshow(diff)
+    axes[2].set_title(f'{year} Difference', fontweight='bold')
+    axes[2].axis('off')
+
+    legend_elements = [
+        mpatches.Patch(color='#228B22', label='Both'),
+        mpatches.Patch(color='#DC143C', label='Raw only'),
+        mpatches.Patch(color='#1E90FF', label='Filtered only'),
+    ]
+    axes[2].legend(handles=legend_elements, loc='lower right', fontsize=8)
+
+    plt.tight_layout()
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {output_path}")
+
+    return fig
+
+
+def plot_prediction_vs_cadastre(
+    pred_mask: np.ndarray,
+    gt_mask: np.ndarray,
+    year: int,
+    label: str = "Prediction",
+    output_path: Optional[str] = None,
+    figsize: Tuple[int, int] = (12, 5),
+) -> plt.Figure:
+    """
+    Overlay prediction on ground truth cadastral raster.
+
+    Shows TP (green), FP (red), FN (blue), TN (dark gray).
+
+    Parameters
+    ----------
+    pred_mask : np.ndarray
+        Predicted binary mask.
+    gt_mask : np.ndarray
+        Ground truth binary mask (rasterized cadastre).
+    year : int
+        Year label.
+    label : str
+        Prediction label (e.g. "Raw" or "Filtered").
+    output_path : str, optional
+        Path to save figure.
+    figsize : tuple
+        Figure size.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    pred = pred_mask.astype(bool)
+    gt = gt_mask.astype(bool)
+
+    tp = np.logical_and(pred, gt)
+    fp = np.logical_and(pred, ~gt)
+    fn = np.logical_and(~pred, gt)
+
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+
+    # Prediction
+    axes[0].imshow(pred_mask, cmap='Greens', vmin=0, vmax=1)
+    axes[0].set_title(f'{year} {label}', fontweight='bold')
+    axes[0].axis('off')
+
+    # Ground truth
+    axes[1].imshow(gt_mask, cmap='Blues', vmin=0, vmax=1)
+    axes[1].set_title(f'{year} Cadastre', fontweight='bold')
+    axes[1].axis('off')
+
+    # Confusion overlay
+    confusion = np.zeros((*pred.shape, 3), dtype=np.uint8)
+    confusion[tp] = [34, 139, 34]     # Green: TP
+    confusion[fp] = [220, 20, 60]     # Red: FP
+    confusion[fn] = [30, 144, 255]    # Blue: FN
+    confusion[~pred & ~gt] = [40, 40, 40]  # Dark gray: TN
+
+    axes[2].imshow(confusion)
+    axes[2].set_title(f'{year} Confusion', fontweight='bold')
+    axes[2].axis('off')
+
+    legend_elements = [
+        mpatches.Patch(color='#228B22', label='TP'),
+        mpatches.Patch(color='#DC143C', label='FP'),
+        mpatches.Patch(color='#1E90FF', label='FN'),
+        mpatches.Patch(color='#282828', label='TN'),
+    ]
+    axes[2].legend(handles=legend_elements, loc='lower right', fontsize=8)
+
+    plt.tight_layout()
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {output_path}")
+
+    return fig
+
+
+def plot_accuracy_by_size(
+    per_parcel_df: "pd.DataFrame",
+    title: str = "Detection Accuracy by Parcel Size",
+    output_path: Optional[str] = None,
+    figsize: Tuple[int, int] = (10, 5),
+) -> plt.Figure:
+    """
+    Scatter + box plot of per-parcel IoU vs parcel area.
+
+    Parameters
+    ----------
+    per_parcel_df : DataFrame
+        Output from compute_per_parcel_stats().
+    title : str
+        Figure title.
+    output_path : str, optional
+        Path to save figure.
+    figsize : tuple
+        Figure size.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    df = per_parcel_df.copy()
+
+    fig, axes = plt.subplots(1, 2, figsize=figsize)
+
+    # Scatter: area vs IoU
+    ax1 = axes[0]
+    ax1.scatter(df['area_m2'], df['iou'], alpha=0.4, s=15, c='#228B22')
+    ax1.set_xscale('log')
+    ax1.set_xlabel('Parcel Area (m²)', fontsize=10)
+    ax1.set_ylabel('IoU', fontsize=10)
+    ax1.set_title('Per-Parcel IoU vs Area', fontweight='bold')
+    ax1.set_ylim(-0.05, 1.05)
+    ax1.grid(alpha=0.3)
+
+    # Box plot by size class
+    bins = [0, 500, 5000, 20000, float('inf')]
+    labels = ['<500', '500-5k', '5k-20k', '>20k']
+    df['size_class'] = pd.cut(df['area_m2'], bins=bins, labels=labels, right=False)
+
+    ax2 = axes[1]
+    df.boxplot(column='iou', by='size_class', ax=ax2)
+    ax2.set_xlabel('Parcel Size Class (m²)', fontsize=10)
+    ax2.set_ylabel('IoU', fontsize=10)
+    ax2.set_title('IoU Distribution by Size', fontweight='bold')
+    fig.suptitle(title, fontsize=12, fontweight='bold')
+
+    plt.tight_layout()
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {output_path}")
+
+    return fig
+
+
+def plot_triple_comparison(
+    raw_mask: np.ndarray,
+    filtered_mask: np.ndarray,
+    gt_mask: np.ndarray,
+    year: int,
+    output_path: Optional[str] = None,
+    figsize: Tuple[int, int] = (15, 5),
+) -> plt.Figure:
+    """
+    3-panel comparison: raw prediction / VITO-filtered / ground truth.
+
+    Parameters
+    ----------
+    raw_mask : np.ndarray
+        Raw FTW field mask.
+    filtered_mask : np.ndarray
+        VITO-filtered field mask.
+    gt_mask : np.ndarray
+        Rasterized cadastral ground truth.
+    year : int
+        Year label.
+    output_path : str, optional
+        Path to save figure.
+    figsize : tuple
+        Figure size.
+
+    Returns
+    -------
+    plt.Figure
+    """
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+
+    for ax, mask, label, cmap in [
+        (axes[0], raw_mask, 'Raw FTW', 'Greens'),
+        (axes[1], filtered_mask, 'VITO Filtered', 'Greens'),
+        (axes[2], gt_mask, 'Cadastre GT', 'Blues'),
+    ]:
+        ax.imshow(mask, cmap=cmap, vmin=0, vmax=1)
+        ax.set_title(f'{year} {label}', fontweight='bold')
+        ax.axis('off')
+
+        pct = 100 * mask.astype(bool).sum() / mask.size
+        ax.text(0.02, 0.98, f'{pct:.1f}%', transform=ax.transAxes,
+                fontsize=9, va='top',
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    fig.suptitle(f'{year}: Raw vs Filtered vs Ground Truth', fontsize=13, fontweight='bold')
+    plt.tight_layout()
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved: {output_path}")
+
     return fig
